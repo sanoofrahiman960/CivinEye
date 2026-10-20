@@ -1,0 +1,772 @@
+{
+  "info": {
+    "name": "CivicEye API",
+    "description": "End-to-end API flow. Citizens: request an OTP, copy the code from the backend console into {{otpCode}}, then verify. Staff: set the username/password variables to accounts created in Django admin (assigned to the Kochi service area). For multipart requests, choose a photo file in the images field.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8001/api"
+    },
+    {
+      "key": "citizenToken",
+      "value": ""
+    },
+    {
+      "key": "citizenRefresh",
+      "value": ""
+    },
+    {
+      "key": "officerToken",
+      "value": ""
+    },
+    {
+      "key": "supervisorToken",
+      "value": ""
+    },
+    {
+      "key": "issueId",
+      "value": ""
+    },
+    {
+      "key": "flaggedImageId",
+      "value": ""
+    },
+    {
+      "key": "citizenPhone",
+      "value": "+919812345678"
+    },
+    {
+      "key": "otpCode",
+      "value": ""
+    },
+    {
+      "key": "officerUsername",
+      "value": "officer.sanitation"
+    },
+    {
+      "key": "officerPassword",
+      "value": ""
+    },
+    {
+      "key": "supervisorUsername",
+      "value": "supervisor.sanitation"
+    },
+    {
+      "key": "supervisorPassword",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Auth",
+      "item": [
+        {
+          "name": "Configuration (public)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/configuration/"
+          }
+        },
+        {
+          "name": "Citizen: request OTP (code printed in the backend console)",
+          "event": [],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/otp/request/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone_number\": \"{{citizenPhone}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Citizen: verify OTP (set otpCode first; first time add full_name)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const d = pm.response.json();",
+                  "if (d.status === 'authenticated') { pm.collectionVariables.set('citizenToken', d.access); pm.collectionVariables.set('citizenRefresh', d.refresh); }",
+                  "pm.test('authenticated or name_required', () => pm.expect(['authenticated', 'name_required']).to.include(d.status));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/otp/verify/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone_number\": \"{{citizenPhone}}\",\n  \"code\": \"{{otpCode}}\",\n  \"full_name\": \"Postman Tester\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login officer (sanitation)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const d = pm.response.json();",
+                  "pm.test('authority user', () => pm.expect(d.user.is_authority).to.be.true);",
+                  "pm.collectionVariables.set('officerToken', d.access);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{officerUsername}}\",\n  \"password\": \"{{officerPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login supervisor (sanitation)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('supervisorToken', pm.response.json().access);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/login/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{supervisorUsername}}\",\n  \"password\": \"{{supervisorPassword}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{citizenToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/me/"
+          }
+        },
+        {
+          "name": "Refresh token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const d = pm.response.json();",
+                  "pm.collectionVariables.set('citizenToken', d.access);",
+                  "pm.collectionVariables.set('citizenRefresh', d.refresh);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/auth/token/refresh/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh\": \"{{citizenRefresh}}\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Citizen reports an issue",
+      "item": [
+        {
+          "name": "Categories",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{citizenToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/issue-categories/"
+          }
+        },
+        {
+          "name": "Nearby open issues (duplicate check)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{citizenToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/issues/nearby/?lat=9.9816&lng=76.2999&category=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "issues",
+                "nearby",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "lat",
+                  "value": "9.9816"
+                },
+                {
+                  "key": "lng",
+                  "value": "76.2999"
+                },
+                {
+                  "key": "category",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create issue (multipart, choose a photo)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 or 200 (idempotent replay)', () => pm.expect([200, 201]).to.include(pm.response.code));",
+                  "const d = pm.response.json();",
+                  "pm.test('complaint id format', () => pm.expect(d.complaint_id).to.match(/^CE-\\d{4}-\\d{6}$/));",
+                  "pm.collectionVariables.set('issueId', d.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{citizenToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/issues/",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "title",
+                  "value": "Garbage dumped near the bus stop",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "A large pile of garbage near the MG Road bus stop.",
+                  "type": "text"
+                },
+                {
+                  "key": "category",
+                  "value": "1",
+                  "type": "text"
+                },
+                {
+                  "key": "latitude",
+                  "value": "9.981600",
+                  "type": "text"
+                },
+                {
+                  "key": "longitude",
+                  "value": "76.299900",
+                  "type": "text"
+                },
+                {
+                  "key": "address",
+                  "value": "MG Road bus stop, Kochi",
+                  "type": "text"
+                },
+                {
+                  "key": "reported_urgency",
+                  "value": "HIGH",
+                  "type": "text"
+                },
+                {
+                  "key": "client_submission_id",
+                  "value": "{{$guid}}",
+                  "type": "text"
+                },
+                {
+                  "key": "images",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "My issues",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{citizenToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/issues/my/?sort=newest"
+          }
+        },
+        {
+          "name": "Issue detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{citizenToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/issues/{{issueId}}/"
+          }
+        },
+        {
+          "name": "Citizen blocked from authority API (403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('403', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{citizenToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/authority/issues/"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Authority handles the issue",
+      "item": [
+        {
+          "name": "Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{officerToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/authority/dashboard/?period=weekly"
+          }
+        },
+        {
+          "name": "Issue list (filters)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{officerToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/authority/issues/?status=SUBMITTED,REOPENED&sort=priority"
+          }
+        },
+        {
+          "name": "Invalid transition: resolve a SUBMITTED issue (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('invalid_transition', () => pm.expect(pm.response.json().error.code).to.eql('invalid_transition'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{officerToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/authority/issues/{{issueId}}/resolve/",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "resolution_description",
+                  "value": "Done",
+                  "type": "text"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Acknowledge",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{officerToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/authority/issues/{{issueId}}/acknowledge/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"comment\": \"Crew notified\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Change priority (reason required)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{officerToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/authority/issues/{{issueId}}/priority/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"priority\": \"HIGH\",\n  \"reason\": \"Blocking the bus stop entrance\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Internal comment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{officerToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/authority/issues/{{issueId}}/comments/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"comment\": \"Contractor scheduled\",\n  \"visibility\": \"INTERNAL\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Start work",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{officerToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/authority/issues/{{issueId}}/start-work/"
+          }
+        },
+        {
+          "name": "Resolve with a photo taken far away (409 proof_check_flagged)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 409) {",
+                  "  const d = pm.response.json();",
+                  "  pm.test('flagged', () => pm.expect(d.error.code).to.eql('proof_check_flagged'));",
+                  "  pm.collectionVariables.set('flaggedImageId', d.error.details.images[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{officerToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/authority/issues/{{issueId}}/resolve/",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "resolution_description",
+                  "value": "Garbage cleared and area disinfected.",
+                  "type": "text"
+                },
+                {
+                  "key": "capture_source",
+                  "value": "CAMERA",
+                  "type": "text"
+                },
+                {
+                  "key": "capture_latitude",
+                  "value": "10.010000",
+                  "type": "text"
+                },
+                {
+                  "key": "capture_longitude",
+                  "value": "76.330000",
+                  "type": "text"
+                },
+                {
+                  "key": "capture_accuracy_m",
+                  "value": "8",
+                  "type": "text"
+                },
+                {
+                  "key": "images",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Supervisor overrides flagged photo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{supervisorToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/authority/images/{{flaggedImageId}}/override-proof-check/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Verified with the field crew by phone\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Resolve again (reuses the overridden photo)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('RESOLVED', () => pm.expect(pm.response.json().status).to.eql('RESOLVED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{officerToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/authority/issues/{{issueId}}/resolve/",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "resolution_description",
+                  "value": "Garbage cleared and area disinfected.",
+                  "type": "text"
+                },
+                {
+                  "key": "capture_source",
+                  "value": "CAMERA",
+                  "type": "text"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Export CSV",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{officerToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/authority/reports/?export=csv"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Citizen verifies",
+      "item": [
+        {
+          "name": "Internal comment is hidden from the citizen",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('no internal comments', () => pm.expect(pm.response.json().comments.every(c => c.visibility === 'CITIZEN_VISIBLE')).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{citizenToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/issues/{{issueId}}/"
+          }
+        },
+        {
+          "name": "Reopen (alternative to confirm)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{citizenToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/issues/{{issueId}}/reopen/",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "reason",
+                  "value": "Garbage is back the next morning",
+                  "type": "text"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Confirm resolution",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{citizenToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/issues/{{issueId}}/confirm-resolution/",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 5,\n  \"comment\": \"Fixed quickly, thanks\"\n}"
+            }
+          }
+        },
+        {
+          "name": "History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{citizenToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/issues/{{issueId}}/history/"
+          }
+        },
+        {
+          "name": "Notifications",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{citizenToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/notifications/"
+          }
+        }
+      ]
+    }
+  ]
+}
